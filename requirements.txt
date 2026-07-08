@@ -1,5 +1,5 @@
 fastapi
 uvicorn
-pyest
+pytest
 sqlalchemy
-psycopg
+psycopg2-binary

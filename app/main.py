@@ -1,7 +1,11 @@
 from fastapi import FastAPI
 from app import storage
+from .database import Base, engine
+from .models import Job
 
 app = FastAPI()
+
+Base.metadata.create_all(bind=engine)
 
 #Confirmation that API is running
 @app.get("/")

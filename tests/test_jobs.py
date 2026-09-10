@@ -1,20 +1,8 @@
 from datetime import datetime
 
-import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.crud import create_job, get_job, update_job
-from app.database import Base
-
-
-@pytest.fixture
-def db():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
-    engine.dispose()
 
 
 def test_create_and_get_job(db):

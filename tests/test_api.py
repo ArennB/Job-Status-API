@@ -5,25 +5,52 @@ import sys
 from unittest.mock import Mock
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from app import database, main, worker
 from app.crud import create_job, get_job
 
 
-@pytest.fixture
-def client(monkeypatch):
-    engine = create_engine(
-        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
-    )
-    factory = sessionmaker(bind=engine)
-    monkeypatch.setattr(main, "engine", engine)
-    monkeypatch.setattr(database, "SessionLocal", factory)
-    with TestClient(main.app) as client:
-        yield client, factory
+def test_create_job(client, monkeypatch):
+    client, factory = client
+    process_job = Mock()
+    monkeypatch.setattr(main, "process_job", process_job)
+
+    response = client.post("/jobs")
+    assert response.status_code == 200
+    job = response.json()
+    assert type(job["id"]) is int
+    assert job["id"] > 0
+    assert job["status"] == "queued"
+    assert job["result"] is None
+    assert job["submitted_at"] is not None
+    assert job["completed_at"] is None
+    process_job.assert_called_once_with(job["id"])
+    with factory() as db:
+        saved = get_job(db, job["id"])
+        assert saved is not None
+        assert saved.status == "queued"
+
+    second = client.post("/jobs")
+    assert second.status_code == 200
+    assert second.json()["id"] != job["id"]
+
+
+def test_get_existing_job(client):
+    client, factory = client
+    with factory() as db:
+        job = create_job(db, {"status": "queued"})
+        job_id = job.id
+        submitted_at = job.submitted_at.isoformat()
+
+    response = client.get(f"/jobs/{job_id}")
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": job_id,
+        "status": "queued",
+        "result": None,
+        "submitted_at": submitted_at,
+        "completed_at": None,
+    }
 
 
 def test_job_lifecycle(client):
@@ -91,9 +118,17 @@ def test_background_processing(client, monkeypatch, fails):
         assert saved.status == ("failed" if fails else "completed")
         assert saved.result == (None if fails else "test result")
         assert saved.completed_at >= saved.submitted_at
-    result = client.get(f'/jobs/{job["id"]}/result').json()
-    assert result["status"] == ("failed" if fails else "completed")
-    assert result["completed_at"] is not None
+    response = client.get(f'/jobs/{job["id"]}/result')
+    assert response.status_code == 200
+    assert response.json() == {
+        "job_id": job["id"],
+        "status": "failed" if fails else "completed",
+        "result": None if fails else "test result",
+        "completed_at": saved.completed_at.isoformat(),
+    }
+    response = client.get(f'/jobs/{job["id"]}')
+    assert response.status_code == 200
+    assert response.json()["status"] == ("failed" if fails else "completed")
 
 
 @pytest.mark.parametrize("path", ["/jobs/999", "/jobs/999/result"])

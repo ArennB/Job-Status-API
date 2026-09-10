@@ -46,8 +46,13 @@ but interrupted queued or processing jobs are not automatically resumed.
 python -m pytest -q
 ```
 
-Tests use SQLite by default, including a test that creates a job in one Python
-process and retrieves it in a new process. To verify that same restart behavior
+Each API and CRUD test uses a fresh in-memory SQLite database, with request and
+background worker sessions redirected to it and connections cleaned up after
+the test. No running database server is needed. The suite covers generated job
+IDs, initial status, retrieval, missing jobs, pending results, and successful and
+failed background processing. A restart test uses a temporary SQLite file to
+create a job in one Python process and retrieve it in a new process.
+To verify that same restart behavior
 against the local PostgreSQL database:
 
 ```sh

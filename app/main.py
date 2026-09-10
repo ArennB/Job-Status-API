@@ -1,12 +1,13 @@
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
 
 from .crud import create_job, get_job
 from .database import Base, engine, get_db
 from .schemas import JobResponse, JobResultResponse
+from .worker import process_job
 
 
 @asynccontextmanager
@@ -28,8 +29,10 @@ def home():
 
 
 @app.post("/jobs", response_model=JobResponse)
-def submit(db: DatabaseSession):
-    return create_job(db, {"status": "queued", "result": None})
+def submit(db: DatabaseSession, background_tasks: BackgroundTasks):
+    job = create_job(db, {"status": "queued", "result": None})
+    background_tasks.add_task(process_job, job.id)
+    return job
 
 
 def require_job(db: Session, job_id: int):
@@ -48,4 +51,9 @@ def status(job_id: int, db: DatabaseSession):
 def result(job_id: int, db: DatabaseSession):
     """Pending jobs return HTTP 200 with their current status and a null result."""
     job = require_job(db, job_id)
-    return {"job_id": job.id, "status": job.status, "result": job.result}
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "result": job.result,
+        "completed_at": job.completed_at,
+    }

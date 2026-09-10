@@ -1,8 +1,13 @@
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
+# Tests supply their own database configuration before importing the app.
+os.environ.setdefault("DATABASE_URL", "sqlite://")
 
 from app import database, main
 

@@ -1,14 +1,12 @@
-import os
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import declarative_base
 
+from .config import get_database_url
+
 Base = declarative_base()
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/job_status_db"
-)
+DATABASE_URL = get_database_url()
 
 engine = create_engine(DATABASE_URL)
 

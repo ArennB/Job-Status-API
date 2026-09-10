@@ -1,19 +1,47 @@
 # Job Status API
 
-## Run locally
+## Run with Docker Compose
 
 Start Docker Desktop, then run:
 
 ```sh
-docker compose up -d db
+cp .env.example .env
+# Edit .env and choose a POSTGRES_PASSWORD.
+docker compose up --build -d --wait
+```
+
+Open http://localhost:8000/docs or `curl http://localhost:8000/`.
+Compose starts PostgreSQL, waits for its health check, then starts the API.
+The API connects to `db:5432` on the Compose network and creates tables at startup.
+Required settings are `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD`.
+Optional `API_PORT` and `POSTGRES_PORT` change the published host ports.
+Credentials are passed as separate fields, so passwords need no URL encoding.
+
+Use `docker compose logs api db` to inspect startup and `docker compose down`
+to stop the services. PostgreSQL data persists in the `postgres_data` volume.
+The PostgreSQL initialization variables only apply to a new volume; when using
+an existing volume, supply its existing credentials and database name.
+
+## Run Python locally
+
+The app reads process environment variables; it does not load `.env` itself.
+After copying and editing `.env.example` as above, export its values:
+
+```sh
+set -a
+. ./.env
+set +a
+docker compose up -d --wait db
 python -m pip install -r requirements.txt
 python -m uvicorn app.main:app --reload
 ```
 
-The API defaults to the PostgreSQL connection in `.env.example`. To use another
-instance, export `DATABASE_URL` before starting the app. The app does not load
-`.env` files automatically. Tables are created during application startup.
-Docker Compose stores PostgreSQL data in the `postgres_data` volume.
+Local Python uses `DB_HOST=localhost` and `DB_PORT=5432` by default. If you
+change `POSTGRES_PORT`, set `DB_PORT` to the same value for local Python.
+Alternatively export `DATABASE_URL` (with URL-encoded credentials), which
+overrides all separate database settings for local Python. Compose always
+sets the API's host to `db` and port to `5432` using the shared credentials.
+Missing credentials fail at startup with a configuration error.
 
 ## Jobs
 
@@ -56,7 +84,7 @@ To verify that same restart behavior
 against the local PostgreSQL database:
 
 ```sh
-TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/job_status_db \
+TEST_DATABASE_URL=postgresql://postgres:YOUR_URL_ENCODED_PASSWORD@localhost:5432/job_status_db \
   python -m pytest tests/test_api.py::test_job_survives_application_restart -q
 ```
 

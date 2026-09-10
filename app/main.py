@@ -1,56 +1,51 @@
-from fastapi import FastAPI
-from app import storage
-from .database import Base, engine
-from .models import Job
+from contextlib import asynccontextmanager
+from typing import Annotated
 
-app = FastAPI()
+from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy.orm import Session
 
-Base.metadata.create_all(bind=engine)
+from .crud import create_job, get_job
+from .database import Base, engine, get_db
+from .schemas import JobResponse, JobResultResponse
 
-#Confirmation that API is running
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    try:
+        yield
+    finally:
+        engine.dispose()
+
+
+app = FastAPI(lifespan=lifespan)
+DatabaseSession = Annotated[Session, Depends(get_db)]
+
+
 @app.get("/")
 def home():
     return {"message": "API is running"}
 
-#Submit a job
-@app.post("/jobs")
-def submit():
-    
-    job_id = storage.next_job_id
 
-    new_job = {
-        "id": job_id,
-        "status": "queued",
-        "result": None
-    }
+@app.post("/jobs", response_model=JobResponse)
+def submit(db: DatabaseSession):
+    return create_job(db, {"status": "queued", "result": None})
 
-    storage.jobs[job_id] = new_job
 
-    storage.next_job_id += 1
-
-    return new_job
-
-#Check Job status
-@app.get("/jobs/{job_id}")
-def status(job_id: int):
-
-    job = storage.jobs.get(job_id)
-
+def require_job(db: Session, job_id: int):
+    job = get_job(db, job_id)
     if job is None:
-        return{"error": "Job not found"}
-    
+        raise HTTPException(status_code=404, detail="Job not found")
     return job
 
-#View job result
-@app.get("/jobs/{job_id}/result")
-def result(job_id: int):
 
-    job = storage.jobs.get(job_id)
+@app.get("/jobs/{job_id}", response_model=JobResponse)
+def status(job_id: int, db: DatabaseSession):
+    return require_job(db, job_id)
 
-    if job is None:
-        return{"error": "Job not found"}
-    
-    return {
-        "job_id": job_id,
-        "result": job["result"]
-    }
+
+@app.get("/jobs/{job_id}/result", response_model=JobResultResponse)
+def result(job_id: int, db: DatabaseSession):
+    """Pending jobs return HTTP 200 with their current status and a null result."""
+    job = require_job(db, job_id)
+    return {"job_id": job.id, "status": job.status, "result": job.result}
